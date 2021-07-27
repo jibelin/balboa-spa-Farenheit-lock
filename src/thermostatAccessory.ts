@@ -7,11 +7,11 @@ import { FLOW_FAILED, FLOW_GOOD } from './spaClient';
 
 /**
  * A thermostat temperature control for the Spa.
- * 
- * It looks like it might be possible to move the Flow sensor to a pair of "Filter Condition", 
+ *
+ * It looks like it might be possible to move the Flow sensor to a pair of "Filter Condition",
  * "Filter life" settings on the thermostat. Might be a slightly better fit for Homekit's approach.
  * At least we could have a "change soon" indicator on the thermostat alerting the user.
- * See https://developer.apple.com/documentation/homekit/hmcharacteristictypefilterlifelevel and 
+ * See https://developer.apple.com/documentation/homekit/hmcharacteristictypefilterlifelevel and
  * related topics.
  */
 export class ThermostatAccessory {
@@ -41,15 +41,15 @@ export class ThermostatAccessory {
 
     // register handlers for the required Characteristics
     this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-      .on(CharacteristicEventTypes.GET, this.getCurrentTemperature.bind(this));               
+      .on(CharacteristicEventTypes.GET, this.getCurrentTemperature.bind(this));
     this.service.getCharacteristic(this.platform.Characteristic.TargetTemperature)
       .on(CharacteristicEventTypes.SET, this.setTargetTemperature.bind(this))
-      .on(CharacteristicEventTypes.GET, this.getTargetTemperature.bind(this));               
+      .on(CharacteristicEventTypes.GET, this.getTargetTemperature.bind(this));
     this.setTargetTempMinMax();
     this.service.getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits)
-      .on(CharacteristicEventTypes.GET, this.getTemperatureDisplayUnits.bind(this)); 
+      .on(CharacteristicEventTypes.GET, this.getTemperatureDisplayUnits.bind(this));
     this.service.getCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState)
-      .on(CharacteristicEventTypes.GET, this.getHeatingState.bind(this)); 
+      .on(CharacteristicEventTypes.GET, this.getHeatingState.bind(this));
     // Adjust properties to only allow Off and Heat (not Cool or Auto which are irrelevant)
     this.service.getCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState)
       .on(CharacteristicEventTypes.SET, this.setTargetHeatingState.bind(this)).setProps({
@@ -59,16 +59,16 @@ export class ThermostatAccessory {
       })
       .on(CharacteristicEventTypes.GET, this.getTargetHeatingState.bind(this));
   }
-  
-    // In "high" mode (the normal mode, which we call "Heat" for this Homekit thermostat), 
+
+    // In "high" mode (the normal mode, which we call "Heat" for this Homekit thermostat),
     // the target temperature can be between 26.5 and 40 celsius.
     // In "low" mode (useful for holidays or days when we're not using the spa, which we
-    // call "Off" for this Homekit thermostat), target can be between 10 and 36 celsius.  
+    // call "Off" for this Homekit thermostat), target can be between 10 and 36 celsius.
   setTargetTempMinMax() {
     this.service.getCharacteristic(this.platform.Characteristic.TargetTemperature).setProps({
-      minValue: 10.0,
-      maxValue: 40.0,
-      minStep: 0.5
+      minValue: 80,
+      maxValue: 104,
+      minStep: 1
     });
     // Code below seems not to work with HomeKit to dynamically change the valid range.
     // So we just set the broadest range above and will then have to validate if the user
@@ -92,10 +92,10 @@ export class ThermostatAccessory {
   /**
    * Handle the "GET" requests from HomeKit
    * These are sent when HomeKit wants to know the current state of the accessory, for example, checking if a Light bulb is on.
-   * 
+   *
    * GET requests should return as fast as possbile. A long delay here will result in
    * HomeKit being unresponsive and a bad user experience in general.
-   * 
+   *
    * If your device takes time to respond you should update the status of your device
    * asynchronously instead using the `updateCharacteristic` method instead.
 
@@ -112,7 +112,7 @@ export class ThermostatAccessory {
       const val = (temperature == undefined ? null : this.platform.spa!.convertTempToC(temperature!));
 
       this.platform.log.debug('Get Current Temperature <-', val, this.platform.status());
-  
+
       callback(null, val);
     }
   }
@@ -122,12 +122,12 @@ export class ThermostatAccessory {
       callback(this.platform.connectionProblem);
     } else {
       const cOrF = this.platform.spa!.getTempIsCorF();
-      const units = (cOrF == "Fahrenheit" 
+      const units = (cOrF == "Fahrenheit"
       ? this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT : this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS);
       this.platform.log.debug('Get Temperature Display Units <-', cOrF, " ", units, this.platform.status());
-  
+
       callback(null, units);
-    }    
+    }
   }
 
   getHeatingState(callback: CharacteristicGetCallback) {
@@ -136,7 +136,7 @@ export class ThermostatAccessory {
     } else {
       const heating = this.platform.spa!.getIsHeatingNow();
       this.platform.log.debug('Get Heating State <-', heating, this.platform.status());
-  
+
       callback(null, heating ? this.platform.Characteristic.CurrentHeatingCoolingState.HEAT
         : this.platform.Characteristic.CurrentHeatingCoolingState.OFF);
     }
@@ -153,12 +153,12 @@ export class ThermostatAccessory {
       if (flowError) {
         result = this.platform.Characteristic.TargetHeatingCoolingState.OFF;
       } else {
-        result = mode ? this.platform.Characteristic.TargetHeatingCoolingState.HEAT 
+        result = mode ? this.platform.Characteristic.TargetHeatingCoolingState.HEAT
         : this.platform.Characteristic.TargetHeatingCoolingState.COOL;
       }
-      this.platform.log.debug('Get Target Heating State <-', 
+      this.platform.log.debug('Get Target Heating State <-',
       mode ? "HEAT" : "COOL", ", Flow error(" + flowError + ")", result, this.platform.status());
-  
+
       callback(null, result);
     }
   }
@@ -182,7 +182,7 @@ export class ThermostatAccessory {
       // effectively locked into the "off" state until something is fixed.
       return;
     } else if (this.platform.spa!.getFlowState() != FLOW_GOOD) {
-      // Trying to set it to cool or heat. But has flow problems. 
+      // Trying to set it to cool or heat. But has flow problems.
       // Can only be in the "off" state
       callback(new Error("Water flow is low or has failed. Heating off"));
       return;
@@ -190,7 +190,7 @@ export class ThermostatAccessory {
     // HEAT means "high".  If users chooses "cool", we treat that as "low"
     const heating = (value == this.platform.Characteristic.TargetHeatingCoolingState.HEAT);
     this.platform.spa!.setTempRangeIsHigh(heating);
-    this.platform.log.debug('Set Target Heating State ->', heating ? "HEAT" : "COOL", 
+    this.platform.log.debug('Set Target Heating State ->', heating ? "HEAT" : "COOL",
       value, "(and need to adjust valid range)", this.platform.status());
     // Adjust the allowed range
     this.setTargetTempMinMax();
@@ -211,7 +211,7 @@ export class ThermostatAccessory {
     } else {
       const temperature = this.platform.spa!.convertTempToC(this.platform.spa!.getTargetTemp());
       this.platform.log.debug('Get Target Temperature <-', temperature, this.platform.status());
-  
+
       callback(null, temperature);
     }
   }
@@ -224,30 +224,30 @@ export class ThermostatAccessory {
     }
     let temp = value as number;
     if (this.platform.spa!.getTempRangeIsHigh()) {
-      if (temp < 26.5) {
-        temp = 26.5;
+      if (temp < 80) {
+        temp = 80;
         // TODO: This line doesn't actually seem to update homekit.  Unless we can find
-        // a way to do this, we'll have to keep the line underneath to reject the change 
+        // a way to do this, we'll have to keep the line underneath to reject the change
         // with an error in the callback.
         this.service.getCharacteristic(this.platform.Characteristic.TargetTemperature)
           .updateValue(temp);
-        callback(new Error("Temperature " + (value as number) + " out of bounds [26.5,40.0]; using " + temp));
+        callback(new Error("Temperature " + (value as number) + " out of bounds [80,104]; using " + temp));
         return;
       }
     } else {
-      if (temp > 36.0) {
-        temp = 36.0;
+      if (temp > 104) {
+        temp = 104;
         // TODO: This line doesn't actually seem to update homekit.  Unless we can find
-        // a way to do this, we'll have to keep the line underneath to reject the change 
+        // a way to do this, we'll have to keep the line underneath to reject the change
         // with an error in the callback.
         this.service.getCharacteristic(this.platform.Characteristic.TargetTemperature)
           .updateValue(temp);
-        callback(new Error("Temperature " + (value as number) + " out of bounds [10.0,36.0]; using " + temp));
+        callback(new Error("Temperature " + (value as number) + " out of bounds [80,104]; using " + temp));
         return;
       }
     }
     this.platform.spa!.setTargetTemperature(this.platform.spa!.convertTempFromC(temp)!);
-    this.platform.log.debug('Set Target Temperature ->', temp, 
+    this.platform.log.debug('Set Target Temperature ->', temp,
       " (may be different to", value, ")", this.platform.status());
 
     callback(null);
@@ -276,13 +276,13 @@ export class ThermostatAccessory {
     const flowState = this.platform.spa!.getFlowState();
 
     this.platform.log.debug('Thermostat updating to: target:',targetTemperature,'(='+targetTempVal+'C)',
-      ', current:', temperature,'(='+tempVal+'C), is high:', mode, 
+      ', current:', temperature,'(='+tempVal+'C), is high:', mode,
       ', is heating:', heating, ', flow state:', flowState);
 
     this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature).updateValue(tempVal);
     this.service.getCharacteristic(this.platform.Characteristic.TargetTemperature).updateValue(targetTempVal);
     this.service.getCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState).updateValue(
-      flowState != FLOW_GOOD ? this.platform.Characteristic.TargetHeatingCoolingState.OFF : 
+      flowState != FLOW_GOOD ? this.platform.Characteristic.TargetHeatingCoolingState.OFF :
       (mode ? this.platform.Characteristic.TargetHeatingCoolingState.HEAT : this.platform.Characteristic.TargetHeatingCoolingState.COOL)
     );
     this.service.getCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState).updateValue(
